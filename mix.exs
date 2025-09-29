@@ -1,9 +1,9 @@
-defmodule TransactionApi.MixProject do
+defmodule ReconciliationApi.MixProject do
   use Mix.Project
 
   def project do
     [
-      app: :transaction_api,
+      app: :reconciliation_api,
       version: "0.1.0",
       elixir: "~> 1.18",
       start_permanent: Mix.env() == :prod,
@@ -15,17 +15,16 @@ defmodule TransactionApi.MixProject do
   def application do
     [
       extra_applications: [:logger],
-      mod: {TransactionApi.Application, []}
+      mod: {ReconciliationApi.Application, []}
     ]
   end
 
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:ecto, "~> 3.10"},
-      {:postgrex, ">= 0.0.0"},
+      {:ecto_sql, "~> 3.12.1"},
+      {:postgrex, "~> 0.20"},
       {:jason, "~> 1.4"},
-      {:plug_cowboy, "~> 2.6"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false}
       # {:dep_from_hexpm, "~> 0.3.0"},
       # {:dep_from_git, git: "https://github.com/elixir-lang/my_dep.git", tag: "0.1.0"}

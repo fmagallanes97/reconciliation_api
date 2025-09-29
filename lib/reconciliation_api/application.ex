@@ -10,6 +10,7 @@ defmodule TransactionApi.Application do
     children = [
       # Starts a worker by calling: TransactionApi.Worker.start_link(arg)
       # {TransactionApi.Worker, arg}
+      ReconciliationApi.Repo
     ]
 
     # See https://hexdocs.pm/elixir/Supervisor.html
