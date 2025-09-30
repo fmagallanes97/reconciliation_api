@@ -1,50 +1,115 @@
 defmodule TransactionApi.Mock.ExternalApi.ExternalApiMock do
   @moduledoc """
-  Simulates an external API that returns paginated JSON responses for transactions.
+  Simple mock external API GenServer.
+
+  - Initializes with transactions for the last N days (configurable).
+  - Adds new transactions for each new day (configurable interval).
+  - Supports paginated fetches and random error simulation.
+  - Lets you fetch all transactions or filter by date.
+
   """
 
-  @total_transactions 1000
+  use GenServer
 
-  # Generates a list of transactions with timestamps spaced by minutes
-  defp generate_transactions do
-    now = DateTime.utc_now()
-    Enum.map(1..@total_transactions, fn i ->
+  def start_link(_opts) do
+    GenServer.start_link(__MODULE__, %{}, name: __MODULE__)
+  end
+
+  def fetch_transactions(page \\ 1, page_size \\ 100, opts \\ []) do
+    case GenServer.call(__MODULE__, {:fetch, page, page_size, opts}) do
+      {:ok, response_json} ->
+        Jason.decode!(response_json)
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  def init(_init_arg) do
+    today = Date.utc_today()
+    # Generate transactions for each day from (today - days_back) to today
+    all_transactions =
+      Enum.flat_map(0..days_back(), fn offset ->
+        day = Date.add(today, -offset)
+        generate_transactions_for_day(day)
+      end)
+
+    Process.send_after(self(), :advance_day, advance_interval_ms())
+    {:ok, %{current_day: today, all_transactions: all_transactions}}
+  end
+
+  def handle_call({:fetch, page, page_size, opts}, _from, state) do
+    case :rand.uniform(100) do
+      1 ->
+        {:reply, {:error, :timeout}, state}
+
+      2 ->
+        {:reply, {:error, :rate_limit}, state}
+
+      3 ->
+        {:reply, {:error, :api_failure}, state}
+
+      _ ->
+        date_filter = Keyword.get(opts, :date)
+
+        transactions =
+          case date_filter do
+            nil -> state.all_transactions
+            date -> Enum.filter(state.all_transactions, fn tx -> tx.created_at == date end)
+          end
+
+        start_idx = (page - 1) * page_size
+        paginated = Enum.slice(transactions, start_idx, page_size)
+        total = length(transactions)
+        total_pages = if total == 0, do: 1, else: div(total + page_size - 1, page_size)
+
+        response = %{
+          data: paginated,
+          page: page,
+          page_size: page_size,
+          total: total,
+          total_pages: total_pages
+        }
+
+        {:reply, {:ok, Jason.encode!(response)}, state}
+    end
+  end
+
+  def handle_info(:advance_day, state) do
+    new_day = Date.add(state.current_day, 1)
+    new_transactions = generate_transactions_for_day(new_day)
+    all_transactions = state.all_transactions ++ new_transactions
+
+    Process.send_after(self(), :advance_day, advance_interval_ms())
+    {:noreply, %{state | current_day: new_day, all_transactions: all_transactions}}
+  end
+
+  # Private
+
+  defp generate_transactions_for_day(day) do
+    Enum.map(1..transactions_added_per_minute(), fn i ->
       %{
         account_number: "ACC#{1000 + i}",
-        amount: Float.round(:rand.uniform() * 1000, 2),
+        amount: Float.round(:rand.uniform() * 1000, 2) |> to_string(),
         currency: "USD",
-        created_at: DateTime.add(now, -i * 60, :second) |> DateTime.to_date() |> Date.to_iso8601(),
+        created_at: Date.to_iso8601(day),
         status: "finished"
       }
     end)
   end
 
-  @doc """
-  Returns a paginated JSON string of transactions, simulating an external API response.
+  defp days_back do
+    Application.get_env(:reconciliation_api, :mock)
+    |> Keyword.get(:days_back, 30)
+  end
 
-  ## Parameters
+  defp advance_interval_ms do
+    Application.get_env(:reconciliation_api, :mock)
+    |> Keyword.get(:advance_interval_ms, 60_000)
+  end
 
-    - page: The page number (1-based).
-    - page_size: The number of transactions per page.
-
-  ## Example
-
-      iex> TransactionApi.Mock.ExternalApi.ExternalApiMock.fetch_transactions_json(1, 100)
-      "{\\"data\\":[...],\\"page\\":1,\\"page_size\\":100,\\"total\\":1000}"
-
-  """
-  def fetch_transactions_json(page \\ 1, page_size \\ 100) do
-    transactions = generate_transactions()
-    start_idx = (page - 1) * page_size
-    paginated = transactions |> Enum.slice(start_idx, page_size)
-
-    response = %{
-      data: paginated,
-      page: page,
-      page_size: page_size,
-      total: @total_transactions
-    }
-
-    Jason.encode!(response)
+  defp transactions_added_per_minute do
+    Application.get_env(:reconciliation_api, :mock)
+    |> Keyword.get(:transactions_added_per_minute, 100)
   end
 end

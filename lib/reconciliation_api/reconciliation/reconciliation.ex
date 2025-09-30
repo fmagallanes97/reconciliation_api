@@ -1,5 +1,16 @@
-defmodule TransactionApi.Conciliation do
+defmodule ReconciliationApi.Reconciliation do
+  @moduledoc """
+    Module for reconciling transactions from an external API with the local database.
+  """
+
+  alias ReconciliationApi.Persistence.Schema.Transaction
   alias TransactionApi.Mock.ExternalApi.ExternalApiMock, as: ExternalApi
+  alias ReconciliationApi.Repo
+
+  require Logger
+
+  import Ecto.Query
+
   # Filter unique transactions by amount and created_at
   def unique_transactions(transactions) do
     transactions
@@ -14,28 +25,81 @@ defmodule TransactionApi.Conciliation do
   end
 
   def get_transactions(page \\ 1, page_size \\ 100) do
-    json =
-      TransactionApi.Mock.ExternalApi.ExternalApiMock.fetch_transactions_json(page, page_size)
+    case ExternalApi.fetch_transactions(page, page_size) do
+      %{"data" => data} ->
+        data
 
-    Jason.decode!(json)["data"]
+      {:error, reason} ->
+        Logger.error("Error fetching transactions for page #{page}: #{inspect(reason)}")
+        []
+    end
   end
 
-  def sync_external_transactions(page \\ 1, page_size \\ 100) do
-    external = ExternalApi.fetch_transactions_json(page, page_size)
-    transactions = Jason.decode!(external)["data"]
+  def get_last_sync_date do
+    from(t in Transaction,
+      order_by: [desc: t.created_at],
+      limit: 1,
+      select: t.created_at
+    )
+    |> Repo.one() || ~D[1970-01-01]
+  end
 
-    Enum.each(transactions, fn tx ->
-      attrs = %{
-        account_number: tx["account_number"],
-        amount: Decimal.new(tx["amount"]),
-        currency: tx["currency"],
-        created_at: Date.from_iso8601!(tx["created_at"]),
-        status: tx["status"]
+  def report_missing_internal(external_transactions) do
+    external_keys =
+      Enum.map(external_transactions, fn tx ->
+        {
+          tx["account_number"],
+          Decimal.new(tx["amount"]),
+          tx["currency"],
+          Date.from_iso8601!(tx["created_at"])
+        }
+      end)
+
+    dynamic_conditions =
+      Enum.reduce(external_keys, false, fn {account, amount, currency, date}, dyn ->
+        dynamic(
+          [t],
+          ^dyn or
+            (t.account_number == ^account and
+               t.amount == ^amount and
+               t.currency == ^currency and
+               t.created_at == ^date)
+        )
+      end)
+
+    db_transactions =
+      from(t in Transaction,
+        where: ^dynamic_conditions,
+        select: {t.account_number, t.amount, t.currency, t.created_at}
+      )
+      |> Repo.all()
+      |> MapSet.new()
+
+    Enum.filter(external_transactions, fn tx ->
+      key = {
+        tx["account_number"],
+        Decimal.new(tx["amount"]),
+        tx["currency"],
+        Date.from_iso8601!(tx["created_at"])
       }
 
-      %TransactionApi.Schema.Transaction{}
-      |> ReconciliationApi.Schema.Transaction.changeset(attrs)
-      |> ReconciliationApi.Repo.insert(on_conflict: :nothing)
+      not MapSet.member?(db_transactions, key)
+    end)
+  end
+
+  def report_missing_external(external_transactions) do
+    external_keys =
+      MapSet.new(
+        Enum.map(external_transactions, fn tx ->
+          {tx["account_number"], Decimal.new(tx["amount"]), tx["currency"],
+           Date.from_iso8601!(tx["created_at"])}
+        end)
+      )
+
+    Transaction
+    |> Repo.all()
+    |> Enum.filter(fn t ->
+      not MapSet.member?(external_keys, {t.account_number, t.amount, t.currency, t.created_at})
     end)
   end
 end

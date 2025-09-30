@@ -1,6 +1,14 @@
-defmodule TransactionApi.Schema.Transaction do
+defmodule ReconciliationApi.Persistence.Schema.Transaction do
   use Ecto.Schema
   import Ecto.Changeset
+
+  @type t :: %__MODULE__{
+          account_number: String.t(),
+          amount: Decimal.t(),
+          currency: String.t(),
+          created_at: Date.t(),
+          status: String.t()
+        }
 
   @primary_key false
   schema "transactions" do

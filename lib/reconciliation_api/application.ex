@@ -1,21 +1,22 @@
-defmodule TransactionApi.Application do
-  # See https://hexdocs.pm/elixir/Application.html
-  # for more information on OTP Applications
+defmodule ReconciliationApi.Application do
   @moduledoc false
 
   use Application
 
   @impl true
   def start(_type, _args) do
-    children = [
-      # Starts a worker by calling: TransactionApi.Worker.start_link(arg)
-      # {TransactionApi.Worker, arg}
-      ReconciliationApi.Repo
-    ]
+    children =
+      if Mix.env() == :test do
+        []
+      else
+        [
+          ReconciliationApi.Repo,
+          TransactionApi.Mock.ExternalApi.ExternalApiMock,
+          ReconciliationApi.Sync.Supervisor
+        ]
+      end
 
-    # See https://hexdocs.pm/elixir/Supervisor.html
-    # for other strategies and supported options
-    opts = [strategy: :one_for_one, name: TransactionApi.Supervisor]
+    opts = [strategy: :one_for_one, name: ReconciliationApi.Supervisor]
     Supervisor.start_link(children, opts)
   end
 end
