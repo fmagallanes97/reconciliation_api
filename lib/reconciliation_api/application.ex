@@ -5,8 +5,10 @@ defmodule ReconciliationApi.Application do
 
   @impl true
   def start(_type, _args) do
+    env = app_env()
+
     children =
-      if Mix.env() == :test do
+      if env == :test do
         []
       else
         [
@@ -18,5 +20,9 @@ defmodule ReconciliationApi.Application do
 
     opts = [strategy: :one_for_one, name: ReconciliationApi.Supervisor]
     Supervisor.start_link(children, opts)
+  end
+
+  defp app_env do
+    Application.get_env(:reconciliation_api, :env, :dev)
   end
 end

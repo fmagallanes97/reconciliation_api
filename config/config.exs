@@ -18,3 +18,5 @@ config :reconciliation_api, :sync,
   page_size: 100,
   pages_to_check: 11,
   concurrent_workers: 4
+
+config :reconciliation_api, :env, Mix.env()
