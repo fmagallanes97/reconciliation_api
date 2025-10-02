@@ -1,4 +1,4 @@
-.PHONY: setup build run down logs shell migrate reset reconciliation_audit
+.PHONY: setup build run down logs shell migrate reset reconciliation_audit open-adminer
 
 setup:
 	docker compose run --rm app mix deps.get
@@ -29,3 +29,7 @@ reset:
 
 reconciliation_audit:
 	docker compose exec app mix reconciliation_audit
+
+open-adminer:
+	@open http://localhost:8080 || xdg-open http://localhost:8080 || start http://localhost:8080
+	@echo "Visit http://localhost:8080 to access Adminer (System: PostgreSQL, Server: db, User: postgres, Password: postgres, Database: reconciliation_api_db)"

@@ -1,6 +1,6 @@
 # Reconciliation API
 
-A robust Elixir application for syncing and reconciling transactions between an external source and an internal database. Includes a CLI audit tool for reporting missing transactions.
+Elixir app for syncing and reconciling transactions between an external source and an internal database. Includes a CLI audit tool for reporting missing transactions. See [CHALLENGE.md](./CHALLENGE.md) for the problem description and more context.
 
 ## Overview
 
@@ -38,11 +38,24 @@ A robust Elixir application for syncing and reconciling transactions between an 
    ```sh
    make logs
    ```
-
 5. **Stop everything**
    ```sh
    make down
    ```
+6. **Open Adminer (Database Browser)**
+   ```sh
+   make open-adminer
+   ```
+   This will open Adminer at [http://localhost:8080](http://localhost:8080).
+
+   **Note:** Make sure your Docker containers are running (`make run`) so the Adminer service is available.
+
+   **Adminer connection settings:**
+   - System: PostgreSQL
+   - Server: db
+   - Username: postgres
+   - Password: postgres
+   - Database: reconciliation_api_db
 
 ## Notes
 

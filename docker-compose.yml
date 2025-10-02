@@ -26,5 +26,11 @@ services:
       - "4000:4000"
     restart: always
 
+  adminer:
+    image: adminer
+    restart: always
+    ports:
+      - 8080:8080
+
 volumes:
   db_data:
