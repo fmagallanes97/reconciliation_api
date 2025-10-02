@@ -102,4 +102,15 @@ defmodule ReconciliationApi.Reconciliation do
       not MapSet.member?(external_keys, {t.account_number, t.amount, t.currency, t.created_at})
     end)
   end
+
+  def deduplicate_with_occurrence_count(transactions) do
+    transactions
+    |> Enum.group_by(fn tx -> {tx["account_number"], tx["amount"], tx["created_at"]} end)
+    |> Enum.flat_map(fn {_key, txs} ->
+      Enum.with_index(txs, 1)
+      |> Enum.map(fn {tx, idx} ->
+        Map.put(tx, "occurrence_count", idx)
+      end)
+    end)
+  end
 end

@@ -33,4 +33,29 @@ defmodule ReconciliationApi.ReconciliationTest do
       assert Enum.any?(firsts, &(&1["id"] == 3))
     end
   end
+
+  describe "deduplicate_with_occurrence_count/1" do
+    test "assigns occurrence_count for repeated transactions (FIFO)" do
+      txs = [
+        %{"account_number" => "A", "amount" => "100.00", "created_at" => "2025-09-21"},
+        %{"account_number" => "A", "amount" => "100.00", "created_at" => "2025-09-21"},
+        %{"account_number" => "A", "amount" => "100.00", "created_at" => "2025-09-21"},
+        %{"account_number" => "B", "amount" => "200.00", "created_at" => "2025-09-22"},
+        %{"account_number" => "B", "amount" => "200.00", "created_at" => "2025-09-22"}
+      ]
+
+      deduped = Reconciliation.deduplicate_with_occurrence_count(txs)
+
+      # Check that all transactions have occurrence_count
+      assert Enum.all?(deduped, &Map.has_key?(&1, "occurrence_count"))
+
+      # Check correct occurrence_count assignment for group A
+      a_group = Enum.filter(deduped, &(&1["account_number"] == "A"))
+      assert Enum.map(a_group, & &1["occurrence_count"]) == [1, 2, 3]
+
+      # Check correct occurrence_count assignment for group B
+      b_group = Enum.filter(deduped, &(&1["account_number"] == "B"))
+      assert Enum.map(b_group, & &1["occurrence_count"]) == [1, 2]
+    end
+  end
 end

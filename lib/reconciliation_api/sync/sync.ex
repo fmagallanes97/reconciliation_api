@@ -51,14 +51,17 @@ defmodule ReconciliationApi.Sync do
               data
           end
 
+        deduped_data = Reconciliation.deduplicate_with_occurrence_count(new_data)
+
         batch_attrs =
-          Enum.map(new_data, fn tx ->
+          Enum.map(deduped_data, fn tx ->
             %{
               account_number: tx["account_number"],
               amount: Decimal.new(tx["amount"]),
               currency: tx["currency"],
               created_at: Date.from_iso8601!(tx["created_at"]),
-              status: tx["status"]
+              status: tx["status"],
+              occurrence_count: tx["occurrence_count"]
             }
           end)
 
