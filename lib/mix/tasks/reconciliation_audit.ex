@@ -5,6 +5,7 @@ defmodule Reconciliation.CLI.Reconciliation do
 
   def run_cli do
     Logger.configure(level: :error)
+
     IO.puts("""
     === Reconciliation CLI ===
 
@@ -28,27 +29,49 @@ defmodule Reconciliation.CLI.Reconciliation do
     IO.puts("\nFetching external transactions (page #{page}, size #{page_size})...")
     external_data = ReconciliationApi.Reconciliation.get_transactions(page, page_size)
 
-    IO.puts("Running reconciliation report...")
-    missing_in_db = ReconciliationApi.Reconciliation.report_missing_internal(external_data)
+    IO.puts("Running reconciliation report (including missing occurrences)...")
 
-    count = length(missing_in_db)
-    IO.puts("\nFound #{count} missing transactions in internal DB.")
+    # Count occurrences in external data
+    external_counts =
+      external_data
+      |> Enum.frequencies_by(fn tx ->
+        {tx["account_number"], tx["amount"], tx["currency"], tx["created_at"]}
+      end)
+
+    # Count occurrences in DB
+    db_counts =
+      ReconciliationApi.Persistence.Schema.Transaction
+      |> ReconciliationApi.Repo.all()
+      |> Enum.frequencies_by(fn tx ->
+        {tx.account_number, Decimal.to_string(tx.amount), tx.currency,
+         Date.to_iso8601(tx.created_at)}
+      end)
+
+    # Find keys where external count > db count
+    missing_occurrences =
+      for {key, ext_count} <- external_counts,
+          db_count = Map.get(db_counts, key, 0),
+          ext_count > db_count,
+          do: {key, ext_count - db_count}
+
+    count = Enum.reduce(missing_occurrences, 0, fn {_key, missing}, acc -> acc + missing end)
+    IO.puts("\nFound #{count} missing transaction occurrences in internal DB.")
 
     if count > 0 do
       show_details =
-        IO.gets("Show details of missing transactions? (y/n): ")
+        IO.gets("Show details of missing occurrences? (y/n): ")
         |> String.trim()
         |> String.downcase()
 
       if show_details == "y" do
-        Enum.each(missing_in_db, fn tx ->
-          IO.inspect(tx)
+        Enum.each(missing_occurrences, fn {key, missing} ->
+          IO.puts("#{inspect(key)} is missing #{missing} occurrence(s)")
         end)
       else
         IO.puts("Details skipped.")
       end
     else
-      IO.puts("All external transactions are present in the internal DB.")
+      IO.puts("All external transaction occurrences are present in the internal DB.")
     end
   end
 

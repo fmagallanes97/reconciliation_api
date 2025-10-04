@@ -83,3 +83,15 @@ In the proposed schema, we can add an `occurrence_count` field to track how many
     field(:created_at, :date)
   end
 ```
+
+---
+
+### Handling duplicates and pagination
+
+When reconciling transactions, duplicates with the same account, amount, and date can appear across different API pages. If deduplication is performed only within each page, there is a risk of assigning the same occurrence number to different transactions, which breaks the one-to-one matching
+
+**How we solved it:**
+To ensure correctness with paginated api responses, we use a db trigger. Each time a new transaction is inserted, the trigger checks the current highest occurrence count for its key, defined by `account number`, `amount`, and `creation_at`. The trigger then assigns the next available occurrence count, so every transaction receives a unique and sequential number, regardless of which page it comes from
+
+**Result:**
+This trigger-based approach guarantees correct 1:1 matching and preserves FIFO order, even when handling duplicates, pagination, and concurrency

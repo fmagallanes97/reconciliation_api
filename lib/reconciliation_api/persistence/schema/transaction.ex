@@ -24,14 +24,13 @@ defmodule ReconciliationApi.Persistence.Schema.Transaction do
   @doc false
   def changeset(transaction, attrs) do
     transaction
-    |> cast(attrs, [:account_number, :amount, :currency, :created_at, :status, :occurrence_count])
+    |> cast(attrs, [:account_number, :amount, :currency, :created_at, :status])
     |> validate_required([
       :account_number,
       :amount,
       :currency,
       :created_at,
-      :status,
-      :occurrence_count
+      :status
     ])
     |> unique_constraint([:account_number, :amount, :currency, :created_at, :occurrence_count])
   end
