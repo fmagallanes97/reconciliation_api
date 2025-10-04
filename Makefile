@@ -1,4 +1,6 @@
-.PHONY: setup build run down logs shell migrate reset reconciliation_audit open-adminer
+.PHONY: setup build run down logs shell migrate reset reconciliation_audit open-adminer iex-connect
+
+include .env
 
 setup:
 	docker compose run --rm app mix deps.get
@@ -13,6 +15,9 @@ run:
 
 down:
 	docker compose down
+
+clean:
+	docker compose down -v
 
 logs:
 	docker compose logs -f
@@ -31,5 +36,10 @@ reconciliation_audit:
 	docker compose exec app mix reconciliation_audit
 
 open-adminer:
-	@open http://localhost:8080 || xdg-open http://localhost:8080 || start http://localhost:8080
+	@open "http://localhost:8080/?pgsql=db&username=postgres&db=reconciliation_api_db" || \
+	xdg-open "http://localhost:8080/?pgsql=db&username=postgres&db=reconciliation_api_db" || \
+	start "http://localhost:8080/?pgsql=db&username=postgres&db=reconciliation_api_db"
 	@echo "Visit http://localhost:8080 to access Adminer (System: PostgreSQL, Server: db, User: postgres, Password: postgres, Database: reconciliation_api_db)"
+
+iex-connect:
+	docker compose exec app iex --sname shell --remsh $(ERL_NODE_NAME) --cookie $(ERL_COOKIE)
