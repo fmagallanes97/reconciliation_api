@@ -12,7 +12,8 @@ config :reconciliation_api, ecto_repos: [ReconciliationApi.Repo]
 config :reconciliation_api, :mock,
   days_back: 10,
   advance_interval_ms: 60_000,
-  transactions_added_per_minute: 100
+  transactions_added_per_minute: 100,
+  duplicate_probability: 0.5
 
 config :reconciliation_api, :sync,
   page_size: 100,

@@ -87,15 +87,25 @@ defmodule TransactionApi.Mock.ExternalApi.ExternalApiMock do
   # Private
 
   defp generate_transactions_for_day(day) do
-    Enum.map(1..transactions_added_per_minute(), fn i ->
-      %{
-        account_number: "ACC#{1000 + i}",
-        amount: Float.round(:rand.uniform() * 1000, 2) |> to_string(),
-        currency: "USD",
-        created_at: Date.to_iso8601(day),
-        status: "finished"
-      }
+    prob = duplicate_probability()
+
+    Enum.reduce(1..transactions_added_per_minute(), [], fn _i, acc ->
+      if :rand.uniform() < prob and acc != [] do
+        tx = Enum.random(acc)
+        [%{tx | created_at: Date.to_iso8601(day)} | acc]
+      else
+        new_tx = %{
+          account_number: "ACC#{1000 + :rand.uniform(20)}",
+          amount: Float.round(:rand.uniform() * 1000, 2) |> to_string(),
+          currency: "USD",
+          created_at: Date.to_iso8601(day),
+          status: "finished"
+        }
+
+        [new_tx | acc]
+      end
     end)
+    |> Enum.reverse()
   end
 
   defp days_back do
@@ -111,5 +121,10 @@ defmodule TransactionApi.Mock.ExternalApi.ExternalApiMock do
   defp transactions_added_per_minute do
     Application.get_env(:reconciliation_api, :mock)
     |> Keyword.get(:transactions_added_per_minute, 100)
+  end
+
+  defp duplicate_probability do
+    Application.get_env(:reconciliation_api, :mock)
+    |> Keyword.get(:duplicate_probability, 0.1)
   end
 end
