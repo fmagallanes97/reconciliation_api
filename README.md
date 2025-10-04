@@ -38,11 +38,8 @@ Elixir app for syncing and reconciling transactions between an external source a
    ```sh
    make logs
    ```
-5. **Stop everything**
-   ```sh
-   make down
-   ```
-6. **Open Adminer (Database Browser)**
+
+5. **Open Adminer (Database Browser)**
    ```sh
    make open-adminer
    ```
@@ -57,7 +54,25 @@ Elixir app for syncing and reconciling transactions between an external source a
    - Password: postgres
    - Database: reconciliation_api_db
 
+6. **Stop everything**
+   ```sh
+   make down
+   ```
+
 ## Notes
 
 - All sync and mock API parameters are configurable in `config/config.exs`.
 - The CLI tool will prompt for page and batch size, and report missing transactions.
+
+## Extras
+
+Open an interactive Elixir shell connected to the running app container using:
+
+```sh
+make iex-connect
+```
+
+Remove all containers and volumes (including the database data) with:
+
+```sh
+make clean
