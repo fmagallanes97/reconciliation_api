@@ -43,7 +43,7 @@ defmodule ReconciliationApi.Sync do
 
     case Api.fetch_transactions(1, page_size) do
       {:ok, data} ->
-        total_pages = data["total_pages"]
+        total_pages = data[:total_pages]
         start_page = start_page(total_pages, pages_to_check, mode)
         last_sync_date = Reconciliation.get_last_sync_date()
 
@@ -102,7 +102,7 @@ defmodule ReconciliationApi.Sync do
       {:ok, %{data: data}} ->
         new_transactions =
           Enum.filter(data, fn tx ->
-            Date.from_iso8601!(tx["created_at"]) > last_sync_date
+            Date.from_iso8601!(tx[:created_at]) > last_sync_date
           end)
 
         {:ok, new_transactions}
@@ -131,11 +131,11 @@ defmodule ReconciliationApi.Sync do
     batch_attrs =
       Enum.map(transactions, fn tx ->
         %{
-          account_number: tx["account_number"],
-          amount: Decimal.new(tx["amount"]),
-          currency: tx["currency"],
-          created_at: Date.from_iso8601!(tx["created_at"]),
-          status: tx["status"]
+          account_number: tx[:account_number],
+          amount: Decimal.new(tx[:amount]),
+          currency: tx[:currency],
+          created_at: Date.from_iso8601!(tx[:created_at]),
+          status: tx[:status]
         }
       end)
 

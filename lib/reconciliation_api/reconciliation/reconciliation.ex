@@ -30,7 +30,7 @@ defmodule ReconciliationApi.Reconciliation do
 
   def unique_transactions(transactions) do
     transactions
-    |> Enum.uniq_by(fn tx -> {tx["amount"], tx["created_at"]} end)
+    |> Enum.uniq_by(fn tx -> {tx[:amount], tx[:created_at]} end)
   end
 
   @doc """
@@ -40,7 +40,7 @@ defmodule ReconciliationApi.Reconciliation do
 
   def first_transactions(transactions) do
     transactions
-    |> Enum.group_by(fn tx -> {tx["amount"], tx["created_at"]} end)
+    |> Enum.group_by(fn tx -> {tx[:amount], tx[:created_at]} end)
     |> Enum.map(fn {_key, txs} -> List.first(txs) end)
   end
 
@@ -95,10 +95,10 @@ defmodule ReconciliationApi.Reconciliation do
     external_keys =
       Enum.map(external_transactions, fn tx ->
         {
-          tx["account_number"],
-          Decimal.new(tx["amount"]),
-          tx["currency"],
-          Date.from_iso8601!(tx["created_at"])
+          tx[:account_number],
+          Decimal.new(tx[:amount]),
+          tx[:currency],
+          Date.from_iso8601!(tx[:created_at])
         }
       end)
 
@@ -117,10 +117,10 @@ defmodule ReconciliationApi.Reconciliation do
 
     Enum.filter(external_transactions, fn tx ->
       key = {
-        tx["account_number"],
-        Decimal.new(tx["amount"]),
-        tx["currency"],
-        Date.from_iso8601!(tx["created_at"])
+        tx[:account_number],
+        Decimal.new(tx[:amount]),
+        tx[:currency],
+        Date.from_iso8601!(tx[:created_at])
       }
 
       not MapSet.member?(db_transactions, key)
@@ -137,8 +137,8 @@ defmodule ReconciliationApi.Reconciliation do
     external_keys =
       MapSet.new(
         Enum.map(external_transactions, fn tx ->
-          {tx["account_number"], Decimal.new(tx["amount"]), tx["currency"],
-           Date.from_iso8601!(tx["created_at"])}
+          {tx[:account_number], Decimal.new(tx[:amount]), tx[:currency],
+           Date.from_iso8601!(tx[:created_at])}
         end)
       )
 
@@ -158,7 +158,7 @@ defmodule ReconciliationApi.Reconciliation do
     external_counts =
       external_transactions
       |> Enum.frequencies_by(fn tx ->
-        {tx["account_number"], tx["amount"], tx["currency"], tx["created_at"]}
+        {tx[:account_number], tx[:amount], tx[:currency], tx[:created_at]}
       end)
 
     db_counts =
@@ -249,11 +249,11 @@ defmodule ReconciliationApi.Reconciliation do
 
   defp normalize(tx) do
     %{
-      account_number: to_string(tx[:account_number] || tx["account_number"]),
-      amount: Decimal.new(tx[:amount] || tx["amount"]),
-      currency: to_string(tx[:currency] || tx["currency"]),
+      account_number: to_string(tx[:account_number]),
+      amount: Decimal.new(tx[:amount]),
+      currency: to_string(tx[:currency]),
       created_at:
-        case tx[:created_at] || tx["created_at"] do
+        case tx[:created_at] do
           %Date{} = date -> date
           date_str when is_binary(date_str) -> Date.from_iso8601!(date_str)
         end
