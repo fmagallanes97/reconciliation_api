@@ -13,7 +13,7 @@ defmodule ReconciliationApi.Sync.Supervisor do
   def init(_opts) do
     children = [
       {Task.Supervisor, name: ReconciliationApi.SyncSupervisor},
-      ReconciliationApi.Sync.Job
+      ReconciliationApi.Sync.Worker
     ]
 
     Supervisor.init(children, strategy: :one_for_one)
