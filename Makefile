@@ -32,9 +32,6 @@ reset:
 	docker compose run --rm app mix ecto.drop
 	make setup
 
-reconciliation_audit:
-	docker compose exec app mix reconciliation_audit
-
 open-adminer:
 	@open "http://localhost:8080/?pgsql=db&username=postgres&db=reconciliation_api_db" || \
 	xdg-open "http://localhost:8080/?pgsql=db&username=postgres&db=reconciliation_api_db" || \
@@ -43,3 +40,9 @@ open-adminer:
 
 iex-connect:
 	docker compose exec app iex --sname shell --remsh $(ERL_NODE_NAME) --cookie $(ERL_COOKIE)
+
+audit_missing:
+	docker compose exec app mix reconciliation.audit_missing
+
+audit_transaction:
+	docker compose exec app mix reconciliation.audit_transaction

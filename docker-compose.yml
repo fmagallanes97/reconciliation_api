@@ -26,6 +26,7 @@ services:
       - ERL_COOKIE=${ERL_COOKIE}
       - RELEASE_COOKIE=${ERL_COOKIE}
       - DATABASE_URL=${DATABASE_URL}
+      - LOG_LEVEL=${LOG_LEVEL:-debug}
     ports:
       - "4000:4000"
     restart: always
