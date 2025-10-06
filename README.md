@@ -81,20 +81,29 @@ Stop everything
 make down
 ```
 
-## CLI Toolkit
+## Audit
 
-The project provides CLI tools for reconciliation and auditing. These are implemented as custom Mix tasks and can be run using Makefile shortcuts from your project root (inside the container).
+Interactive audit modules are available for:
 
-### Commands
+- **Audit for missing transactions**: Checks a batch (page) of external transactions and reports which are missing from your internal system.
+- **Audit a single transaction**: Search for and reconcile one transaction between the internal and external sources.
 
-**Batch audit**:
-Reports external transactions missing in the internal database, including duplicate occurrences. Prompts for page number and page size to fetch from the external API.
-```sh
-make audit_missing
+To run an audit:
+
+Open an interactive Elixir shell connected to the running app container:
+
+   ```sh
+   make iex-connect
+   ```
+
+In the IEx shell, run one of the following commands:
+
+```elixir
+ReconciliationApi.AuditMissing.run_interactive()
 ```
+Checks a batch of external transactions and reports which are missing from your internal system.
 
-**Audit Transaction**:
-Interactively search for and reconcile a specific internal transaction with the external API. Prompts for search criteria, lets you pick a transaction, and attempts reconciliation.
-```sh
-make audit_transaction
+```elixir
+ReconciliationApi.AuditTransaction.run_interactive()
 ```
+Searches for and reconciles a single transaction between the internal and external sources.

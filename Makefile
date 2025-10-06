@@ -39,10 +39,5 @@ open-adminer:
 	@echo "Visit http://localhost:8080 to access Adminer (System: PostgreSQL, Server: db, User: postgres, Password: postgres, Database: reconciliation_api_db)"
 
 iex-connect:
+	@echo "Connecting to remote IEx shell: node=$(ERL_NODE_NAME), cookie=$(ERL_COOKIE)"
 	docker compose exec app iex --sname shell --remsh $(ERL_NODE_NAME) --cookie $(ERL_COOKIE)
-
-audit_missing:
-	docker compose exec app mix reconciliation.audit_missing
-
-audit_transaction:
-	docker compose exec app mix reconciliation.audit_transaction
