@@ -19,6 +19,10 @@ defmodule ReconciliationApi.Reconciliation do
           optional(:occurrence_count) => integer
         }
 
+  @type tx_key ::
+          {account_number :: String.t(), amount :: String.t(), currency :: String.t(),
+           created_at :: String.t()}
+
   @doc """
   Filters unique transactions by amount and created_at.
   """
@@ -85,7 +89,7 @@ defmodule ReconciliationApi.Reconciliation do
   @doc """
   Reports external transactions that are missing in the internal database.
   """
-  @spec report_missing_internal([map()]) :: [map()]
+  @spec report_missing_internal([map()]) :: [tx_key()]
 
   def report_missing_internal(external_transactions) do
     external_keys =
@@ -148,9 +152,7 @@ defmodule ReconciliationApi.Reconciliation do
   @doc """
   Audits missing occurrences of transactions by comparing external and internal counts.
   """
-  @spec audit_missing_occurrences([map()]) :: [
-          {{String.t(), String.t(), String.t(), String.t()}, integer()}
-        ]
+  @spec audit_missing_occurrences([map()]) :: [{tx_key(), missing_occurrence :: integer()}]
 
   def audit_missing_occurrences(external_transactions) do
     external_counts =
@@ -179,7 +181,7 @@ defmodule ReconciliationApi.Reconciliation do
   Returns the matched transaction or an error if no match is found in either source.
   """
   @spec find_match(query_params()) ::
-          {:ok, Transaction.t()}
+          {:ok, map()}
           | {:error, :not_found | :not_match | any()}
 
   def find_match(
@@ -200,12 +202,12 @@ defmodule ReconciliationApi.Reconciliation do
 
   # Private
 
-  def find_nth_match_across_pages(target_tx, occurrence_count, page \\ 1, match_count \\ 0) do
+  defp find_nth_match_across_pages(target_tx, occurrence_count, page \\ 1, match_count \\ 0) do
     case Api.fetch_transactions(page, 100) do
-      {:ok, %{"data" => []}} ->
+      {:ok, %{data: []}} ->
         {:error, :not_found}
 
-      {:ok, %{"data" => page_data}} ->
+      {:ok, %{data: page_data}} ->
         normalized_target = normalize(target_tx)
         predicate = &matches_tx?(normalize(&1), normalized_target)
 
@@ -227,7 +229,7 @@ defmodule ReconciliationApi.Reconciliation do
     end
   end
 
-  def nth_match(enum, predicate, n) do
+  defp nth_match(enum, predicate, n) do
     stream = Stream.filter(enum, predicate)
     matches = Enum.to_list(stream)
 
@@ -237,15 +239,15 @@ defmodule ReconciliationApi.Reconciliation do
     end
   end
 
-  def matches_tx?(
-        %{account_number: acc, amount: amt, currency: curr, created_at: date},
-        %{account_number: acc, amount: amt, currency: curr, created_at: date}
-      ),
-      do: true
+  defp matches_tx?(
+         %{account_number: acc, amount: amt, currency: curr, created_at: date},
+         %{account_number: acc, amount: amt, currency: curr, created_at: date}
+       ),
+       do: true
 
-  def matches_tx?(_, _), do: false
+  defp matches_tx?(_, _), do: false
 
-  def normalize(tx) do
+  defp normalize(tx) do
     %{
       account_number: to_string(tx[:account_number] || tx["account_number"]),
       amount: Decimal.new(tx[:amount] || tx["amount"]),

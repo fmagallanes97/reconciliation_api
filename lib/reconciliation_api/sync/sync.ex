@@ -99,7 +99,7 @@ defmodule ReconciliationApi.Sync do
 
   defp process_single(page, page_size, last_sync_date, :incremental) do
     case Api.fetch_transactions(page, page_size) do
-      {:ok, %{"data" => data}} ->
+      {:ok, %{data: data}} ->
         new_transactions =
           Enum.filter(data, fn tx ->
             Date.from_iso8601!(tx["created_at"]) > last_sync_date
@@ -114,7 +114,7 @@ defmodule ReconciliationApi.Sync do
 
   defp process_single(page, page_size, _, :full) do
     case Api.fetch_transactions(page, page_size) do
-      {:ok, %{"data" => data}} ->
+      {:ok, %{data: data}} ->
         {:ok, data}
 
       {:error, _reason} = e ->
