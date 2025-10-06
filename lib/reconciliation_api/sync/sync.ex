@@ -1,137 +1,146 @@
 defmodule ReconciliationApi.Sync do
   @moduledoc """
-  Handles incremental and full synchronization of transactions from the external API.
+  Synchronizes transactions from the external API into the database.
+  Supports incremental and full sync modes, batching, and retry logic.
+
+  ## Options
+
+    * `:page_size` - Number of transactions per page (default: 100)
+    * `:pages_to_check` - Number of pages to check (default: 3)
+    * `:concurrency` - Number of concurrent workers (default: 4)
+    * `:max_attempts` - Max retry attempts per page (default: 3)
+    * `:mode` - Sync mode (default: `:incremental`)
+        * `:incremental` - Only fetches new transactions since the last sync (faster).
+        * `:full` - Deep scan; fetches all transactions from the beginning (slower, more thorough).
   """
 
-  alias TransactionApi.Mock.ExternalApi.ExternalApiMock
+  alias ReconciliationApi.Api
   alias ReconciliationApi.Persistence.Schema.Transaction
   alias ReconciliationApi.Repo
   alias ReconciliationApi.Reconciliation
 
+  import ReconciliationApi.Util.Retry, only: [retry: 3, retryable_error?: 1]
+
   require Logger
 
-  def concurrent_sync(
-        page_size,
-        pages_to_check \\ 3,
-        concurrency \\ 4,
-        mode \\ :incremental
-      ) do
-    response = ExternalApiMock.fetch_transactions(1, page_size)
-    total_pages = response["total_pages"]
+  @type opt ::
+          {:page_size, pos_integer()}
+          | {:pages_to_check, pos_integer()}
+          | {:concurrency, pos_integer()}
+          | {:max_attempts, pos_integer()}
+          | {:mode, :incremental | :full}
 
-    last_sync_date = Reconciliation.get_last_sync_date()
+  @type opts :: [opt]
 
-    start_page =
-      case mode do
-        :full -> 1
-        :incremental -> max(total_pages - pages_to_check + 1, 1)
-      end
+  def concurrent_sync(opts) do
+    %{
+      page_size: page_size,
+      pages_to_check: pages_to_check,
+      mode: mode,
+      concurrency: concurrency,
+      max_attempts: max_attempts
+    } = parse_opts(opts)
 
-    Task.Supervisor.async_stream(
-      ReconciliationApi.SyncSupervisor,
-      start_page..total_pages,
-      fn page -> process_sync_page_with_retry(page, page_size, last_sync_date, mode, 3, 0) end,
-      max_concurrency: concurrency,
-      timeout: :infinity
-    )
-    |> Enum.to_list()
-  end
+    case Api.fetch_transactions(1, page_size) do
+      {:ok, data} ->
+        total_pages = data["total_pages"]
+        start_page = start_page(total_pages, pages_to_check, mode)
+        last_sync_date = Reconciliation.get_last_sync_date()
 
-  defp process_sync_page(page, page_size, last_sync_date, mode) do
-    case ExternalApiMock.fetch_transactions(page, page_size) do
-      %{"data" => data} ->
-        new_data =
-          case mode do
-            :incremental ->
-              Enum.filter(data, fn tx ->
-                Date.from_iso8601!(tx["created_at"]) > last_sync_date
-              end)
-
-            :full ->
-              data
-          end
-
-        batch_attrs =
-          Enum.map(new_data, fn tx ->
-            %{
-              account_number: tx["account_number"],
-              amount: Decimal.new(tx["amount"]),
-              currency: tx["currency"],
-              created_at: Date.from_iso8601!(tx["created_at"]),
-              status: tx["status"]
-              # occurrence_count will be set by db trigger
-            }
-          end)
-
-        if batch_attrs != [] do
-          Repo.insert_all(Transaction, batch_attrs, on_conflict: :nothing)
-          Logger.info("Inserted #{length(batch_attrs)} new records from page #{page}.")
+        page_worker = fn page ->
+          retry(
+            fn -> process_and_batch(page, page_size, last_sync_date, mode) end,
+            max_attempts,
+            &retryable_error?/1
+          )
         end
 
-        {:ok, batch_attrs}
+        Task.Supervisor.async_stream(
+          ReconciliationApi.SyncSupervisor,
+          start_page..total_pages,
+          page_worker,
+          max_concurrency: concurrency,
+          timeout: :infinity
+        )
+        |> Enum.to_list()
 
-      {:error, :timeout} ->
-        {:error, :timeout, page}
-
-      {:error, :rate_limit} ->
-        {:error, :rate_limit, page}
-
-      {:error, _reason} ->
-        {:error, :api_failure, page}
+      {:error, _reason} = e ->
+        e
     end
   end
 
-  defp process_sync_page_with_retry(page, page_size, last_sync_date, mode, max_attempts, attempts) do
-    case process_sync_page(page, page_size, last_sync_date, mode) do
-      {:ok, result} ->
-        Logger.info("Successfully synced page #{page}: inserted #{length(result)} records.")
-        result
+  # Private
 
-      {:error, :timeout, page} when attempts < max_attempts ->
-        delay = backoff_with_jitter(attempts)
+  defp parse_opts(opts) do
+    opts
+    |> Enum.into(%{})
+    |> Map.put_new(:page_size, 100)
+    |> Map.put_new(:pages_to_check, 3)
+    |> Map.put_new(:concurrency, 4)
+    |> Map.put_new(:max_attempts, 3)
+    |> Map.put_new(:mode, :incremental)
+    |> then(fn map ->
+      case map.mode do
+        :full -> %{map | pages_to_check: 100_000}
+        _ -> map
+      end
+    end)
+  end
 
-        Logger.warning(
-          "Timeout syncing page #{page} (attempt #{attempts + 1}/#{max_attempts}), retrying in #{delay}ms."
-        )
+  defp start_page(_, _, :full), do: 1
+  defp start_page(total_pages, pages_to_check, _), do: max(total_pages - pages_to_check + 1, 1)
 
-        :timer.sleep(delay)
-
-        process_sync_page_with_retry(
-          page,
-          page_size,
-          last_sync_date,
-          mode,
-          max_attempts,
-          attempts + 1
-        )
-
-      {:error, :rate_limit, page} when attempts < max_attempts ->
-        delay = backoff_with_jitter(attempts)
-
-        Logger.warning(
-          "Rate limit syncing page #{page} (attempt #{attempts + 1}/#{max_attempts}), retrying in #{delay}ms."
-        )
-
-        :timer.sleep(delay)
-
-        process_sync_page_with_retry(
-          page,
-          page_size,
-          last_sync_date,
-          mode,
-          max_attempts,
-          attempts + 1
-        )
-
-      {:error, type, page} ->
-        Logger.error("Failed to sync page #{page} after #{max_attempts} attempts: #{type}")
-        {:error, type, page}
+  defp process_and_batch(page, page_size, last_sync_date, mode) do
+    case process_single(page, page_size, last_sync_date, mode) do
+      {:ok, transactions} -> in_batch(transactions, page)
+      error -> error
     end
   end
 
-  defp backoff_with_jitter(attempts) do
-    base_delay = :math.pow(2, attempts) * 100
-    jitter = :rand.uniform(100)
-    round(base_delay + jitter)
+  defp process_single(page, page_size, last_sync_date, :incremental) do
+    case Api.fetch_transactions(page, page_size) do
+      {:ok, %{"data" => data}} ->
+        new_transactions =
+          Enum.filter(data, fn tx ->
+            Date.from_iso8601!(tx["created_at"]) > last_sync_date
+          end)
+
+        {:ok, new_transactions}
+
+      {:error, _reason} = e ->
+        e
+    end
+  end
+
+  defp process_single(page, page_size, _, :full) do
+    case Api.fetch_transactions(page, page_size) do
+      {:ok, %{"data" => data}} ->
+        {:ok, data}
+
+      {:error, _reason} = e ->
+        e
+    end
+  end
+
+  defp in_batch([], page) do
+    Logger.info("No new records to insert for page #{page}.")
+    {:ok, []}
+  end
+
+  defp in_batch(transactions, page) do
+    batch_attrs =
+      Enum.map(transactions, fn tx ->
+        %{
+          account_number: tx["account_number"],
+          amount: Decimal.new(tx["amount"]),
+          currency: tx["currency"],
+          created_at: Date.from_iso8601!(tx["created_at"]),
+          status: tx["status"]
+        }
+      end)
+
+    Repo.insert_all(Transaction, batch_attrs, on_conflict: :nothing)
+    Logger.info("Inserted #{length(batch_attrs)} new records from page #{page}.")
+    {:ok, batch_attrs}
   end
 end
