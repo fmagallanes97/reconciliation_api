@@ -29,6 +29,8 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-debug}
     ports:
       - "4000:4000"
+    volumes:
+      - mnesia_data:/mnesia
     restart: always
 
   adminer:
@@ -39,3 +41,4 @@ services:
 
 volumes:
   db_data:
+  mnesia_data:
