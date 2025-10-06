@@ -95,3 +95,6 @@ To ensure correctness with paginated api responses, we use a db trigger. Each ti
 
 **Result:**
 This trigger-based approach guarantees correct 1:1 matching and preserves FIFO order, even when handling duplicates, pagination, and concurrency
+
+**Trade-off:**
+The trigger guarantees correctness and FIFO order, but can increase complexity and risk of deadlocks under high concurrency
