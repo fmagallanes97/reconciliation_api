@@ -1,4 +1,7 @@
 defmodule ReconciliationApi.Persistence.Mapper.TransactionMapper do
+  @moduledoc """
+  Provides mapping functions for converting between transaction structs and other representations.
+  """
   alias ReconciliationApi.Persistence.Schema.Transaction
 
   @type invalid_error :: {:error, :invalid_transaction}

@@ -1,4 +1,7 @@
 defmodule ReconciliationApi.Persistence.Schema.Transaction do
+  @moduledoc """
+  Ecto schema for representing a transaction in the local database.
+  """
   use Ecto.Schema
   import Ecto.Changeset
 

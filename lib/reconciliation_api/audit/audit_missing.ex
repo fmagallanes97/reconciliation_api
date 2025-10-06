@@ -15,44 +15,44 @@ defmodule ReconciliationApi.AuditMissing do
     IO.puts("Last sync in the system date: #{Reconciliation.get_last_sync_date()}")
     IO.puts("Note: Type 'q', 'exit', or press Ctrl+D at any prompt to quit.")
 
-    page =
-      prompt("Enter page number to fetch (default 1): ")
-      |> parse_int(1)
-
-    page_size =
-      prompt("Enter page size (default 100): ")
-      |> parse_int(100)
+    page = prompt("Enter page number to fetch (default 1): ") |> parse_int(1)
+    page_size = prompt("Enter page size (default 100): ") |> parse_int(100)
 
     IO.puts("\nFetching external transactions (page #{page}, size #{page_size})...")
 
-    external_data =
-      case Api.fetch_transactions(page, page_size) do
-        {:ok, %{data: data}} ->
-          data
-
-        {:error, reason} ->
-          IO.puts("Failed to fetch external transactions: #{inspect(reason)}")
-          []
-      end
-
+    external_data = fetch_external_data(page, page_size)
     missing_occurrences = Reconciliation.audit_missing_occurrences(external_data)
     count = Enum.reduce(missing_occurrences, 0, fn {_key, missing}, acc -> acc + missing end)
+
     IO.puts("\nFound #{count} missing transaction occurrences in internal database.")
 
     if count > 0 do
-      show_details =
-        prompt("Show details of missing occurrences? (y/n): ")
-        |> String.downcase()
-
-      if show_details == "y" do
-        Enum.each(missing_occurrences, fn {key, missing} ->
-          IO.puts("#{inspect(key)} is missing #{missing} occurrence(s)")
-        end)
-      else
-        IO.puts("Details skipped.")
-      end
+      handle_missing_occurrences(missing_occurrences)
     else
       IO.puts("All external transaction occurrences are present in the internal system.")
+    end
+  end
+
+  defp fetch_external_data(page, page_size) do
+    case Api.fetch_transactions(page, page_size) do
+      {:ok, %{data: data}} ->
+        data
+
+      {:error, reason} ->
+        IO.puts("Failed to fetch external transactions: #{inspect(reason)}")
+        []
+    end
+  end
+
+  defp handle_missing_occurrences(missing_occurrences) do
+    show_details = prompt("Show details of missing occurrences? (y/n): ") |> String.downcase()
+
+    if show_details == "y" do
+      Enum.each(missing_occurrences, fn {key, missing} ->
+        IO.puts("#{inspect(key)} is missing #{missing} occurrence(s)")
+      end)
+    else
+      IO.puts("Details skipped.")
     end
   end
 

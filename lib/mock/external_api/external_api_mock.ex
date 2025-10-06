@@ -13,6 +13,8 @@ defmodule TransactionApi.Mock.ExternalApi.ExternalApiMock do
 
   use GenServer
 
+  require Logger
+
   @type transaction :: %{
           account_number: String.t(),
           amount: String.t(),
@@ -60,7 +62,8 @@ defmodule TransactionApi.Mock.ExternalApi.ExternalApiMock do
   end
 
   @spec handle_call({:fetch, pos_integer, pos_integer, Keyword.t()}, {pid(), term}, state) ::
-          {:reply, %HTTPoison.Response{} | %HTTPoison.Error{}, state}
+          {:reply, map(), state}
+
   def handle_call({:fetch, page, page_size, opts}, _from, state) do
     case maybe_simulate_error() do
       {:error, reason} ->
@@ -178,51 +181,97 @@ defmodule TransactionApi.Mock.ExternalApi.ExternalApiMock do
     {transaction_id, %{tx | created_at: Date.to_iso8601(day)}}
   end
 
-  defp setup_mnesia do
-    IO.inspect(node(), label: "Node name at runtime")
+  defp load_or_generate_transactions(today) do
+    existing =
+      :mnesia.transaction(fn ->
+        :mnesia.match_object({:mock_transactions, :_, :_})
+      end)
 
-    # Read configured dir (charlist or binary) and normalize to string for FS checks
+    case existing do
+      {:atomic, []} ->
+        generate_and_store_transactions(today)
+        :ok
+
+      {:atomic, _rows} ->
+        :ok
+
+      other ->
+        raise "mnesia read failed: #{inspect(other)}"
+    end
+  end
+
+  defp generate_and_store_transactions(today) do
+    generated =
+      Enum.flat_map(0..days_back(), fn offset ->
+        day = Date.add(today, -offset)
+        generate_transactions_for_day(day)
+      end)
+
+    :mnesia.transaction(fn ->
+      Enum.each(generated, fn {transaction_id, tx} ->
+        :mnesia.write({:mock_transactions, transaction_id, tx})
+      end)
+    end)
+  end
+
+  # Start mnesia and ensure schema exist and are persisted on disk for mock data
+
+  defp setup_mnesia do
+    Logger.debug("Node name at runtime: #{inspect(node())}")
+
     dir_cfg = Application.get_env(:mnesia, :dir) || ~c"/mnesia"
-    IO.inspect(dir_cfg, label: "Mnesia dir at runtime")
+    Logger.debug("Mnesia dir at runtime: #{inspect(dir_cfg)}")
     dir_str = to_string(dir_cfg)
 
-    # 1) Ensure directory exists and create schema if schema.DAT is missing
     File.mkdir_p!(dir_str)
     schema_file = Path.join(dir_str, "schema.DAT")
+    ensure_schema_file(schema_file)
 
-    if not File.exists?(schema_file) do
+    :ok = :mnesia.start()
+    wait_for_schema_table()
+
+    schema_disks = get_table_info(:schema, :disc_copies)
+    schema_rams = get_table_info(:schema, :ram_copies)
+    ensure_schema_table_copy(schema_disks, schema_rams)
+
+    create_opts = [attributes: [:id, :transaction], type: :set, disc_copies: [node()]]
+    ensure_mock_transactions_table(create_opts)
+
+    table_disks = get_table_info(:mock_transactions, :disc_copies)
+    ensure_mock_transactions_table_copy(table_disks)
+
+    wait_for_mock_transactions_table()
+
+    :ok
+  end
+
+  defp ensure_schema_file(schema_file) do
+    unless File.exists?(schema_file) do
       case :mnesia.create_schema([node()]) do
         :ok -> :ok
-        # Accept "already_exists" variants and proceed
         {:error, {:already_exists, _}} -> :ok
         {:error, {_n, {:already_exists, _}}} -> :ok
         other -> raise "create_schema failed: #{inspect(other)}"
       end
     end
+  end
 
-    # 2) Start and wait for the schema table to be up
-    :ok = :mnesia.start()
-
+  defp wait_for_schema_table do
     case :mnesia.wait_for_tables([:schema], 10_000) do
       :ok -> :ok
       {:timeout, _} -> raise "Mnesia schema did not come up in time"
     end
+  end
 
-    # 3) Ensure the schema itself is DISK on THIS node
-    schema_disks =
-      try do
-        :mnesia.table_info(:schema, :disc_copies)
-      rescue
-        _ -> []
-      end
+  defp get_table_info(table, info_type) do
+    try do
+      :mnesia.table_info(table, info_type)
+    rescue
+      _ -> []
+    end
+  end
 
-    schema_rams =
-      try do
-        :mnesia.table_info(:schema, :ram_copies)
-      rescue
-        _ -> []
-      end
-
+  defp ensure_schema_table_copy(schema_disks, schema_rams) do
     cond do
       node() in schema_disks ->
         :ok
@@ -240,36 +289,18 @@ defmodule TransactionApi.Mock.ExternalApi.ExternalApiMock do
           other -> raise "add_table_copy(schema, disc) failed: #{inspect(other)}"
         end
     end
+  end
 
-    # 4) Create or reuse your table with DISK persistence
-    create_opts = [
-      attributes: [:id, :transaction],
-      type: :set,
-      disc_copies: [node()]
-    ]
-
+  defp ensure_mock_transactions_table(create_opts) do
     case :mnesia.create_table(:mock_transactions, create_opts) do
-      {:atomic, :ok} ->
-        :ok
-
-      {:aborted, {:already_exists, :mock_transactions}} ->
-        :ok
-
-      {:aborted, {:already_exists, :mock_transactions, _}} ->
-        :ok
-
-      other ->
-        raise "Mnesia table creation failed: #{inspect(other)}"
+      {:atomic, :ok} -> :ok
+      {:aborted, {:already_exists, :mock_transactions}} -> :ok
+      {:aborted, {:already_exists, :mock_transactions, _}} -> :ok
+      other -> raise "Mnesia table creation failed: #{inspect(other)}"
     end
+  end
 
-    # 5) Ensure THIS node actually has a DISK copy of the table (covers reuse path)
-    table_disks =
-      try do
-        :mnesia.table_info(:mock_transactions, :disc_copies)
-      rescue
-        _ -> []
-      end
-
+  defp ensure_mock_transactions_table_copy(table_disks) do
     unless node() in table_disks do
       case :mnesia.add_table_copy(:mock_transactions, node(), :disc_copies) do
         {:atomic, :ok} -> :ok
@@ -277,45 +308,16 @@ defmodule TransactionApi.Mock.ExternalApi.ExternalApiMock do
         other -> raise "add_table_copy(:mock_transactions, disc) failed: #{inspect(other)}"
       end
     end
+  end
 
-    # 6) Wait until the table is fully available
+  defp wait_for_mock_transactions_table do
     case :mnesia.wait_for_tables([:mock_transactions], 10_000) do
       :ok -> :ok
       {:timeout, _} -> raise "mock_transactions did not come up in time"
     end
-
-    :ok
   end
 
-  defp load_or_generate_transactions(today) do
-    existing =
-      :mnesia.transaction(fn ->
-        :mnesia.match_object({:mock_transactions, :_, :_})
-      end)
-
-    case existing do
-      {:atomic, []} ->
-        generated =
-          Enum.flat_map(0..days_back(), fn offset ->
-            day = Date.add(today, -offset)
-            generate_transactions_for_day(day)
-          end)
-
-        :mnesia.transaction(fn ->
-          Enum.each(generated, fn {transaction_id, tx} ->
-            :mnesia.write({:mock_transactions, transaction_id, tx})
-          end)
-        end)
-
-        :ok
-
-      {:atomic, _rows} ->
-        :ok
-
-      other ->
-        raise "mnesia read failed: #{inspect(other)}"
-    end
-  end
+  # Config params
 
   defp days_back do
     Application.get_env(:reconciliation_api, :mock)

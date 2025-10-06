@@ -42,34 +42,38 @@ defmodule ReconciliationApi.Sync do
     } = parse_opts(opts)
 
     case Api.fetch_transactions(1, page_size) do
-      {:ok, data} ->
-        total_pages = data[:total_pages]
-        start_page = start_page(total_pages, pages_to_check, mode)
-        last_sync_date = Reconciliation.get_last_sync_date()
-
-        page_worker = fn page ->
-          retry(
-            fn -> process_and_batch(page, page_size, last_sync_date, mode) end,
-            max_attempts,
-            &retryable_error?/1
-          )
-        end
-
-        Task.Supervisor.async_stream(
-          ReconciliationApi.SyncSupervisor,
-          start_page..total_pages,
-          page_worker,
-          max_concurrency: concurrency,
-          timeout: :infinity
-        )
-        |> Enum.to_list()
-
       {:error, _reason} = e ->
         e
+
+      {:ok, data} ->
+        run_concurrent_sync(data, page_size, pages_to_check, mode, concurrency, max_attempts)
     end
   end
 
   # Private
+
+  defp run_concurrent_sync(data, page_size, pages_to_check, mode, concurrency, max_attempts) do
+    total_pages = data[:total_pages]
+    start_page = start_page(total_pages, pages_to_check, mode)
+    last_sync_date = Reconciliation.get_last_sync_date()
+
+    page_worker = fn page ->
+      retry(
+        fn -> process_and_batch(page, page_size, last_sync_date, mode) end,
+        max_attempts,
+        &retryable_error?/1
+      )
+    end
+
+    Task.Supervisor.async_stream(
+      ReconciliationApi.SyncSupervisor,
+      start_page..total_pages,
+      page_worker,
+      max_concurrency: concurrency,
+      timeout: :infinity
+    )
+    |> Enum.to_list()
+  end
 
   defp parse_opts(opts) do
     opts
