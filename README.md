@@ -4,8 +4,8 @@ Elixir app for syncing and reconciling transactions between an external source a
 
 ## Overview
 
-- **Syncs transactions** from a mock external API into a Postgres database.
-- **Supports incremental and full syncs** with configurable concurrency and page size.
+- **Syncs transactions** from a mock external API into a Postgres database, supporting incremental and full syncs with configurable concurrency and page size.
+- **Mock external API** persists transaction data using Mnesia with disk-based storage in Docker volumes.
 - **Reconciliation CLI** lets you audit and compare external vs internal transactions.
 - **Containerized** with Docker and Docker Compose for easy setup.
 - **Makefile** provides shortcuts for common development and ops tasks.
@@ -29,17 +29,15 @@ Elixir app for syncing and reconciling transactions between an external source a
 
    **Note:** Database setup and migrations are run automatically when the app container starts (see `entrypoint.sh`). No need to run `make setup`.
 
-3. **Run the reconciliation audit CLI**
-   ```sh
-   make reconciliation_audit
-   ```
 
-4. **View logs**
+3. **View logs**
+
    ```sh
    make logs
    ```
 
-5. **Open Adminer (Database Browser)**
+4. **Open Adminer (Database Browser)**
+
    ```sh
    make open-adminer
    ```
@@ -56,54 +54,53 @@ Elixir app for syncing and reconciling transactions between an external source a
 
    After running `make open-adminer`, you can log in with the above settings to browse and query your database.
 
+## Extras
+
+- Open an interactive Elixir shell connected to the running app container:
+
+  ```sh
+  make iex-connect
+  ```
+
+- Remove all containers and volumes (including the database data):
+
+  ```sh
+  make clean
+  ```
+
+- Stop everything:
+
+  ```sh
+  make down
+  ```
+
 ## Notes
 
 - All sync and mock API parameters are configurable in `config/config.exs`.
-- The CLI tool will prompt for page and batch size, and report missing transactions.
-
-## Extras
-
-Open an interactive Elixir shell connected to the running app container using:
-
-```sh
-make iex-connect
-```
-
-Remove all containers and volumes (including the database data) with:
-
-```sh
-make clean
-```
-
-Stop everything
-
-```sh
-make down
-```
 
 ## Audit
 
 Interactive audit modules are available for:
 
-- **Audit for missing transactions**: Checks a batch (page) of external transactions and reports which are missing from your internal system.
-- **Audit a single transaction**: Search for and reconcile one transaction between the internal and external sources.
+- **Audit for missing transactions:** Checks a batch (page) of external transactions and reports which are missing from your internal system.
+- **Audit a single transaction:** Search for and reconcile one transaction between the internal and external sources.
 
 To run an audit:
 
-Open an interactive Elixir shell connected to the running app container:
+1. Open an interactive Elixir shell connected to the running app container:
 
    ```sh
    make iex-connect
    ```
 
-In the IEx shell, run one of the following commands:
+2. In the IEx shell, run one of the following commands:
 
-```elixir
-ReconciliationApi.AuditMissing.run_interactive()
-```
-Checks a batch of external transactions and reports which are missing from your internal system.
+   ```elixir
+   ReconciliationApi.AuditMissing.run_interactive()
+   ```
+   Checks a batch of external transactions and reports which are missing from your internal system.
 
-```elixir
-ReconciliationApi.AuditTransaction.run_interactive()
-```
-Searches for and reconciles a single transaction between the internal and external sources.
+   ```elixir
+   ReconciliationApi.AuditTransaction.run_interactive()
+   ```
+   Searches for and reconciles a single transaction between the internal and external sources.
